@@ -24,6 +24,7 @@ def encode_prompt(prompt_instructions, classification=False):
         instruction = re.sub(r"\s+", " ", instruction).strip().rstrip(":")
         prompt += f"{idx+1}. {instruction}\n"
     prompt += f"{len(prompt_instructions) + 1}."
+
     return prompt
 
 
@@ -153,6 +154,7 @@ if __name__ == "__main__":
                 random.shuffle(prompt_instructions)
                 prompt = encode_prompt(prompt_instructions, classification=args.use_clf_seed_tasks_only)
                 batch_inputs.append(prompt)
+
             results = make_gpt3_requests(
                 engine=args.engine,
                 prompts=batch_inputs,

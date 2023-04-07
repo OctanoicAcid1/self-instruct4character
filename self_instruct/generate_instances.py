@@ -92,17 +92,14 @@ if __name__ == '__main__':
                 del data["metadata"]
             tasks.append(data)
 
-    task_clf_types = {}
-    with open(os.path.join(args.batch_dir, "is_clf_or_not_davinci_template_1.jsonl")) as fin:
-        for line in fin:
-            data = json.loads(line)
-            task_clf_types[data["instruction"]] = data["is_classification"].strip() in ["Yes", "yes", "YES"]
-
     if args.classification_tasks_only:
         tasks = [task for task in tasks if task_clf_types[task["instruction"]]]
     
     if args.generation_tasks_only:
-        tasks = [task for task in tasks if not task_clf_types[task["instruction"]]]
+        tasks = [task for task in tasks] # if task['mark'] is True
+    
+    print(tasks)
+
 
     output_path = os.path.join(args.batch_dir, args.output_file)
     existing_requests = {}
@@ -125,24 +122,20 @@ if __name__ == '__main__':
                     data = existing_requests[d["instruction"]]
                     data = OrderedDict(
                         (k, data[k]) for k in \
-                            ["instruction", "raw_instances", "instance_metadata", "instruction_metadata", 
-                            "most_similar", "avg_similarity_score"]
+                            ["instruction", "raw_instances", "most_similar_instructions"]
                         )
                     fout.write(json.dumps(data, ensure_ascii=False) + "\n")
             else:
                 prompts = []
                 for task in batch:
-                    if task_clf_types[task["instruction"]]:
-                        prompt = output_first_template_for_clf + " " + task["instruction"].strip() + "\n"
-                        prompts.append(prompt)
-                    else:
-                        prompt = input_first_template_for_gen + " " + task["instruction"].strip() + "\n"
-                        prompts.append(prompt)
+                    prompt = input_first_template_for_gen + " " + task["instruction"].strip() + "\n"
+                    prompts.append(prompt)
+                    print(prompt)
+                
                 results = make_gpt3_requests(
                     engine=args.engine,
                     prompts=prompts,
-                    # because the clf template is longer, we need to decrease the max_tokens
-                    max_tokens=300 if any(task_clf_types[task["instruction"]] for task in batch) else 350,
+                    max_tokens=2048,
                     temperature=0,
                     top_p=0,
                     frequency_penalty=0,

@@ -1,4 +1,4 @@
-batch_dir="/workspaces/self-instruct4character/data/gpt3_generations/"
+batch_dir="../data/gpt3_generations/"
 openai_api="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"
 
 python ../self_instruct/generate_instances.py \
@@ -8,4 +8,6 @@ python ../self_instruct/generate_instances.py \
     --max_instances_to_gen 5 \
     --engine "davinci" \
     --request_batch_size 5 \
-    --api_key ${openai_api}
+    --api_key ${openai_api} \
+    --num_instructions 5 \
+    --generation_tasks_only

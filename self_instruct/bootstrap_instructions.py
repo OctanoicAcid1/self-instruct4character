@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from multiprocessing import Pool
 from functools import partial
-from rouge_score import rouge_scorer
+import evaluate
 from gpt3_api import make_requests as make_gpt3_requests
 
 
@@ -19,7 +19,7 @@ random.seed(42)
 def encode_prompt(prompt_instructions, classification=False):
     """Encode multiple prompt instructions into a single string."""
    
-    prompt = "给出一系列关于江姐的任务：\n"
+    prompt = "用中文给出一系列关于江姐的任务：\n"
     for idx, instruction in enumerate(prompt_instructions):
         instruction = re.sub(r"\s+", " ", instruction).strip().rstrip(":")
         prompt += f"{idx+1}. {instruction}\n"
@@ -44,27 +44,11 @@ def post_process_gpt3_response(response):
     for inst in raw_instructions:
         inst = re.sub(r"\s+", " ", inst).strip()
         inst = inst.strip().capitalize()
-        if inst == "":
-            continue
-        # filter out too short or too long instructions
-        if len(inst.split()) <= 3 or len(inst.split()) > 150:
-            continue
-        # filter based on keywords that are not suitable for language models.
-        if any(find_word_in_string(word, inst) for word in ["image", "images", "graph", "graphs", "picture", "pictures", "file", "files", "map", "maps", "draw", "plot", "go to"]):
-            continue
-        # We found that the model tends to add "write a program" to some existing instructions, which lead to a lot of such instructions.
-        # And it's a bit comfusing whether the model need to write a program or directly output the result. 
-        # Here we filter them out.
-        # Note this is not a comprehensive filtering for all programming instructions.
-        if inst.startswith("Write a program"):
-            continue
-        # filter those starting with punctuation
-        if inst[0] in string.punctuation:
-            continue
-        # filter those starting with non-english character
-        if not inst[0].isascii():
+        ### 单独过滤
+        if "你是革命烈士江姐，所以请站在江姐的角度完成任务：" not in inst:
             continue
         instructions.append(inst)
+
     return instructions
 
 
@@ -144,14 +128,16 @@ if __name__ == "__main__":
                 machine_instructions.append(instruction_info["instruction"])
                 request_idx = instruction_info["request_idx"] + 1
         print(f"Loaded {len(machine_instructions)} machine-generated instructions")
+        print(machine_instructions)
 
-    # similarities = {}
-    scorer = rouge_scorer.RougeScorer(["rougeL"], use_stemmer=False)
-    
     # now let's generate new instructions!
     progress_bar = tqdm.tqdm(total=args.num_instructions_to_generate)
     if machine_instructions:
         progress_bar.update(len(machine_instructions))
+
+    from rouge import Rouge
+
+    rouge = Rouge()
 
     with open(os.path.join(args.batch_dir, "machine_generated_instructions.jsonl"), "a") as fout:
         while len(machine_instructions) < args.num_instructions_to_generate:
@@ -191,23 +177,27 @@ if __name__ == "__main__":
                 all_metadata += [result] * len(new_instructions)
             
             for inst, metadata in zip(instructions, all_metadata):
-                with Pool(4) as p:
-                    rouge_scores = p.map(partial(scorer.score, inst), seed_instructions + machine_instructions)
-                rouge_scores = [score["rougeL"].fmeasure for score in rouge_scores]
-                # rouge_scores = [scorer.score(inst, e_inst)["rougeL"].fmeasure for e_inst in human_instructions + machine_instructions]
+                rouge_scores = []
+                all_instructions = seed_instructions + machine_instructions
+                for i in range(len(all_instructions)):
+                    pattern = "(?<=你是革命烈士江姐，所以请站在江姐的角度完成任务：).*"
+                    temp_inst = re.findall(pattern, inst)
+                    seed_inst = re.findall(pattern, all_instructions[i])
+                    result = rouge.get_scores(' '.join(list(temp_inst)), ' '.join(list(seed_inst)))
+                    rouge_scores.append(result[0]['rouge-l']['f'])
+                
                 if max(rouge_scores) > 0.7:
                     continue
-                all_instructions = seed_instructions + machine_instructions
+                #all_instructions = seed_instructions + machine_instructions
                 most_similar_instructions = {
-                        all_instructions[i] : rouge_scores[i] for i in np.argsort(rouge_scores)[-10:][::-1]
+                        all_instructions[i] : rouge_scores[i] for i in np.argsort(rouge_scores)[-5:][::-1]
                     }
                 machine_instructions.append(inst)
-                fout.write(json.dumps({
+                example = {
                     "instruction": inst,
-                    "most_similar": most_similar_instructions,
-                    "avg_similarity_score": float(np.mean(rouge_scores)),
-                    "metadata": metadata,
-                    "request_idx": request_idx
-                }) + "\n")
+                    "request_idx": request_idx,
+                    "most_similar_instructions": most_similar_instructions
+                }
+                fout.write(f"{json.dumps(example, ensure_ascii=False)}\n")
                 progress_bar.update(1)
             request_idx += 1

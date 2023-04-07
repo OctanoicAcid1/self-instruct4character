@@ -1,0 +1,26 @@
+import openai
+import os
+
+
+'''
+
+os.environ["HTTP_PROXY"] = "http://127.0.0.1:4780"
+os.environ["HTTPS_PROXY"] = "https://127.0.0.1:4780"
+'''
+openai.api_key = "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"
+
+q = "Hello"
+
+print(q)
+
+rsp = openai.ChatCompletion.create(model="gpt-3.5-turbo",
+                                   messages=[{
+                                       "role": "system",
+                                       "content": "你好！"
+                                   }, {
+                                       "role": "user",
+                                       "content": q
+                                   }])
+
+response = rsp.get("choices")[0]["message"]["content"]
+print(response)

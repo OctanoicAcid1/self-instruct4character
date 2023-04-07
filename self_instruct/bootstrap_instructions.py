@@ -133,9 +133,6 @@ if __name__ == "__main__":
     seed_instructions = [t["instruction"] for t in seed_tasks]
     print(f"Loaded {len(seed_instructions)} human-written seed instructions")
   
-    seed_instructions = [t["instruction"] for t in seed_tasks]
-    print(f"Loaded {len(seed_instructions)} human-written seed instructions")
-    
     os.makedirs(args.batch_dir, exist_ok=True)
     request_idx = 0
     # load the LM-generated instructions
@@ -185,13 +182,14 @@ if __name__ == "__main__":
                 api_key=args.api_key,
                 organization=args.organization,
             )
+
             instructions = []
             all_metadata = []
             for result in results:
                 new_instructions = post_process_gpt3_response(result["response"])
                 instructions += new_instructions
                 all_metadata += [result] * len(new_instructions)
-      
+            
             for inst, metadata in zip(instructions, all_metadata):
                 with Pool(4) as p:
                     rouge_scores = p.map(partial(scorer.score, inst), seed_instructions + machine_instructions)
